@@ -20,7 +20,8 @@ func main() {
 	flag.Parse()
 
 	if *flDate {
-		fmt.Println(time.Now().Format(time.UnixDate))
+    // this intentionally has no '\n'
+		fmt.Printf("== %s", time.Now().Format(time.UnixDate))
 		return
 	}
 
