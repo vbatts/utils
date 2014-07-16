@@ -1,0 +1,20 @@
+sync_dir = "/mnt/storage/slackware"
+
+[mirrors] 
+
+  [mirrors.alien_multilib_current]
+  url = "rsync://taper.alienbase.nl/mirrors/people/alien/multilib/current/"
+  enabled = false
+
+  [mirrors.slackware64]
+  url = "rsync://slackware.osuosl.org/slackware/slackware64-current/"
+  enabled = true
+
+  [mirrors.slackware64_14.1]
+  url = "rsync://slackware.osuosl.org/slackware/slackware64-14.1/"
+  enabled = true
+
+  [mirrors.slackware32]
+  url = "rsync://slackware.osuosl.org/slackware/slackware-current/"
+  enabled = false
+
