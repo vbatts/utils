@@ -41,7 +41,7 @@ func main() {
 			continue
 		}
 
-		cmd := exec.Command("rsync", "-avPHS", uri.String(), dest+"/")
+		cmd := exec.Command("rsync", "-avPHS", "--delete", uri.String(), dest+"/")
 		cmd.Stderr = os.Stderr // we'll want to see errors, regardless
 		if !*flQuiet {
 			cmd.Stdout = os.Stdout
