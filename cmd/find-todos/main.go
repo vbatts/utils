@@ -58,7 +58,7 @@ func main() {
 			if strings.Contains(line, "TODO") {
 				fmt.Printf("%s:%d\t%s\n", filepath.Base(match), count, strings.TrimRight(line, " \n"))
 				trimmed := strings.TrimSpace(line)
-				if strings.HasSuffix(trimmed, ":") {
+				if strings.HasSuffix(trimmed, ":") || strings.HasSuffix(trimmed, "TODO") {
 					i := strings.IndexRune(line, rune(trimmed[0]))
 					for {
 						buf, err := rdr.Peek(i + 1)
