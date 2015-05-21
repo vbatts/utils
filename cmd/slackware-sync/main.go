@@ -3,11 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/BurntSushi/toml"
 	"net/url"
 	"os"
 	"os/exec"
 	"path"
+
+	"github.com/BurntSushi/toml"
 )
 
 func main() {
@@ -17,6 +18,10 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
+	}
+
+	if len(*flSyncDir) > 0 {
+		config.SyncDir = *flSyncDir
 	}
 
 	_, err = EnsureDirExists(config.SyncDir)
@@ -47,10 +52,10 @@ func main() {
 			cmd.Stdout = os.Stdout
 		}
 
-    err = cmd.Run()
-    if err != nil {
+		err = cmd.Run()
+		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-    }
+		}
 	}
 }
 
@@ -82,6 +87,7 @@ type Mirror struct {
 }
 
 var (
+	flSyncDir    = flag.String("dir", "", "directory to sync to (this flag overrides the url in the configuration file)")
 	flConfigFile = flag.String("c", path.Join(os.Getenv("HOME"), ".slackware-sync.toml"), "config file for the sync")
 	flQuiet      = flag.Bool("q", false, "less output")
 )
