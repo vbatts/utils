@@ -7,8 +7,16 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"sync"
 
 	"github.com/BurntSushi/toml"
+)
+
+var (
+	flSyncDir    = flag.String("dir", "", "directory to sync to (this flag overrides the sync_dir in the configuration file)")
+	flConfigFile = flag.String("c", path.Join(os.Getenv("HOME"), ".slackware-sync.toml"), "config file for the sync")
+	flThreads    = flag.Int("t", 1, "threads to fetch with")
+	flQuiet      = flag.Bool("q", false, "less output")
 )
 
 func main() {
@@ -23,6 +31,9 @@ func main() {
 	if len(*flSyncDir) > 0 {
 		config.SyncDir = *flSyncDir
 	}
+	if *flThreads > 1 {
+		config.Threads = *flThreads
+	}
 
 	_, err = EnsureDirExists(config.SyncDir)
 	if err != nil {
@@ -30,7 +41,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	for _, mirror := range config.Mirrors {
+	workers := make(chan int, config.Threads)
+	wg := sync.WaitGroup{}
+	for name, mirror := range config.Mirrors {
 		if !mirror.Enabled {
 			continue
 		}
@@ -46,17 +59,35 @@ func main() {
 			continue
 		}
 
-		cmd := exec.Command("rsync", "-avPHS", "--delete", uri.String(), dest+"/")
-		cmd.Stderr = os.Stderr // we'll want to see errors, regardless
-		if !*flQuiet {
-			cmd.Stdout = os.Stdout
-		}
+		wg.Add(1)
+		rsyncFunc := func() {
+			if *flThreads > 1 {
+				workers <- 1
+			}
+			defer func() {
+				if *flThreads > 1 {
+					<-workers
+				}
+				wg.Done()
+			}()
+			cmd := exec.Command("rsync", "-avPHS", "--delete", uri.String(), dest+"/")
+			cmd.Stderr = os.Stderr // we'll want to see errors, regardless
+			if !*flQuiet {
+				cmd.Stdout = os.Stdout
+			}
 
-		err = cmd.Run()
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			err = cmd.Run()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%q: %s", name, err)
+			}
+		}
+		if *flThreads > 1 {
+			go rsyncFunc()
+		} else {
+			rsyncFunc()
 		}
 	}
+	wg.Wait()
 }
 
 func EnsureDirExists(path string) (os.FileInfo, error) {
@@ -76,6 +107,7 @@ func EnsureDirExists(path string) (os.FileInfo, error) {
 }
 
 type GeneralConfig struct {
+	Threads int    `toml:"threads"`
 	SyncDir string `toml:"sync_dir"`
 	Mirrors map[string]Mirror
 }
@@ -85,9 +117,3 @@ type Mirror struct {
 	URL     string `toml:"url"`
 	Enabled bool   `toml:"enabled"`
 }
-
-var (
-	flSyncDir    = flag.String("dir", "", "directory to sync to (this flag overrides the sync_dir in the configuration file)")
-	flConfigFile = flag.String("c", path.Join(os.Getenv("HOME"), ".slackware-sync.toml"), "config file for the sync")
-	flQuiet      = flag.Bool("q", false, "less output")
-)
