@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"os/exec"
@@ -22,10 +23,8 @@ var (
 func main() {
 	flag.Parse()
 	var config GeneralConfig
-	_, err := toml.DecodeFile(*flConfigFile, &config)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+	if _, err := toml.DecodeFile(*flConfigFile, &config); err != nil {
+		log.Fatal(err)
 	}
 
 	if len(*flSyncDir) > 0 {
@@ -35,10 +34,8 @@ func main() {
 		config.Threads = *flThreads
 	}
 
-	_, err = EnsureDirExists(config.SyncDir)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+	if _, err = EnsureDirExists(config.SyncDir); err != nil {
+		log.Fatal(err)
 	}
 
 	workers := make(chan int, config.Threads)
@@ -53,19 +50,18 @@ func main() {
 			continue
 		}
 		dest := path.Join(config.SyncDir, uri.Host, uri.Path)
-		_, err = EnsureDirExists(dest)
-		if err != nil {
+		if _, err = EnsureDirExists(dest); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			continue
 		}
 
 		wg.Add(1)
 		rsyncFunc := func() {
-			if *flThreads > 1 {
+			if config.Threads > 1 {
 				workers <- 1
 			}
 			defer func() {
-				if *flThreads > 1 {
+				if config.Threads > 1 {
 					<-workers
 				}
 				wg.Done()
@@ -76,12 +72,11 @@ func main() {
 				cmd.Stdout = os.Stdout
 			}
 
-			err = cmd.Run()
-			if err != nil {
+			if err = cmd.Run(); err != nil {
 				fmt.Fprintf(os.Stderr, "%q: %s", name, err)
 			}
 		}
-		if *flThreads > 1 {
+		if config.Threads > 1 {
 			go rsyncFunc()
 		} else {
 			rsyncFunc()
