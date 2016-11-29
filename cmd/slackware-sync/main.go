@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	flSyncDir    = flag.String("dir", "", "directory to sync to (this flag overrides the sync_dir in the configuration file)")
+	flSyncDir    = flag.String("dir", "", "directory to sync to (this flag overrides the syncDir in the configuration file)")
 	flConfigFile = flag.String("c", path.Join(os.Getenv("HOME"), ".slackware-sync.toml"), "config file for the sync")
 	flThreads    = flag.Int("t", 1, "threads to fetch with")
 	flQuiet      = flag.Bool("q", false, "less output")
@@ -34,7 +34,7 @@ func main() {
 		config.Threads = *flThreads
 	}
 
-	if _, err = EnsureDirExists(config.SyncDir); err != nil {
+	if _, err := EnsureDirExists(config.SyncDir); err != nil {
 		log.Fatal(err)
 	}
 
@@ -66,7 +66,24 @@ func main() {
 				}
 				wg.Done()
 			}()
-			cmd := exec.Command("rsync", "-avPHS", "--delete", uri.String(), dest+"/")
+			args := []string{
+				"-avPHS",
+				"--delete",
+			}
+			if mirror.LinkDest != "" {
+				if linkDestMirror, ok := config.Mirrors[mirror.LinkDest]; ok {
+					if linkDestURL, err := url.Parse(linkDestMirror.URL); err == nil {
+						linkDest := path.Join(config.SyncDir, linkDestURL.Host, linkDestURL.Path)
+						args = append(args, "--link-dest="+linkDest+"/")
+					} else {
+						fmt.Fprintf(os.Stderr, "linkDest URL %q does not parse: %s", mirror.LinkDest, err)
+					}
+				}
+			}
+			args = append(args, uri.String())
+			args = append(args, dest+"/")
+			//fmt.Println("rsync", strings.Join(args, " "))
+			cmd := exec.Command("rsync", args...)
 			cmd.Stderr = os.Stderr // we'll want to see errors, regardless
 			if !*flQuiet {
 				cmd.Stdout = os.Stdout
@@ -103,12 +120,13 @@ func EnsureDirExists(path string) (os.FileInfo, error) {
 
 type GeneralConfig struct {
 	Threads int    `toml:"threads"`
-	SyncDir string `toml:"sync_dir"`
+	SyncDir string `toml:"syncDir"`
 	Mirrors map[string]Mirror
 }
 
 type Mirror struct {
-	Title   string `toml:"title"`
-	URL     string `toml:"url"`
-	Enabled bool   `toml:"enabled"`
+	Title    string `toml:"title"`
+	URL      string `toml:"url"`
+	Enabled  bool   `toml:"enabled"`
+	LinkDest string `toml:"linkDest"`
 }

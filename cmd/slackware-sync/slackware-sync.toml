@@ -1,5 +1,5 @@
 threads  = 2
-sync_dir = "/mnt/storage/slackware"
+syncDir = "/mnt/storage/slackware"
 
 [mirrors] 
 
@@ -11,11 +11,12 @@ sync_dir = "/mnt/storage/slackware"
   url = "rsync://slackware.osuosl.org/slackware/slackware64-current/"
   enabled = true
 
-  [mirrors.slackware64_14.1]
+  [mirrors.slackware64_14_1]
   url = "rsync://slackware.osuosl.org/slackware/slackware64-14.1/"
-  enabled = true
+  enabled = false
 
   [mirrors.slackware32]
   url = "rsync://slackware.osuosl.org/slackware/slackware-current/"
-  enabled = false
+  linkDest = "slackware64"
+  enabled = true
 
