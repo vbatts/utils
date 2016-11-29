@@ -87,7 +87,7 @@ type Mirror struct {
 }
 
 var (
-	flSyncDir    = flag.String("dir", "", "directory to sync to (this flag overrides the url in the configuration file)")
+	flSyncDir    = flag.String("dir", "", "directory to sync to (this flag overrides the sync_dir in the configuration file)")
 	flConfigFile = flag.String("c", path.Join(os.Getenv("HOME"), ".slackware-sync.toml"), "config file for the sync")
 	flQuiet      = flag.Bool("q", false, "less output")
 )
