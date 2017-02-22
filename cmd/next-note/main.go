@@ -21,22 +21,22 @@ func main() {
 
 	if *flDate {
 		// this intentionally has no '\n'
-		fmt.Printf("== %s", time.Now().Format(time.UnixDate))
+		fmt.Printf("## %s", time.Now().Format(time.UnixDate))
 		return
 	}
 
-	var monday int
+	var sunday int
 	t := time.Now()
 	if *flCurrWeek {
-		monday = -1*int(t.Weekday()) + 1
+		sunday = -1 * int(t.Weekday())
 	} else if *flPrevWeek {
-		monday = -1*int(t.Weekday()) + 1 - 7
+		sunday = -1*int(t.Weekday()) - 7
 	} else {
-		monday = -1*int(t.Weekday()) + 1 + 7
+		sunday = -1*int(t.Weekday()) + 7
 	}
-	friday := monday + 4
-	startDate := t.AddDate(0, 0, monday).Format(FileDate)
-	endDate := t.AddDate(0, 0, friday).Format(FileDate)
-	filename := fmt.Sprintf("Tasks-%s-%s.txt", startDate, endDate)
+	saturday := sunday + 6
+	startDate := t.AddDate(0, 0, sunday).Format(FileDate)
+	endDate := t.AddDate(0, 0, saturday).Format(FileDate)
+	filename := fmt.Sprintf("Tasks-%s-%s.md", startDate, endDate)
 	fmt.Println(path.Join(*flDir, filename))
 }
