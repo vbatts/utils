@@ -28,7 +28,7 @@ func main() {
 		NoteDir = filepath.Join(os.Getenv("HOME"), "Notes")
 	}
 	flNoteDir = flag.String("d", NoteDir, "directory of notes")
-	flNotePat = flag.String("p", "Tasks*.txt", "file pattern")
+	flNotePat = flag.String("p", "Tasks*.md", "file pattern")
 	flag.Parse()
 
 	matches, err := filepath.Glob(filepath.Join(*flNoteDir, *flNotePat))
@@ -54,7 +54,7 @@ func main() {
 				fmt.Println(err)
 				os.Exit(1)
 			}
-			count += 1
+			count++
 			if strings.Contains(line, "TODO") {
 				fmt.Printf("%s:%d\t%s\n", filepath.Base(match), count, strings.TrimRight(line, " \n"))
 				trimmed := strings.TrimSpace(line)
