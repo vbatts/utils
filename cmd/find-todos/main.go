@@ -10,14 +10,10 @@ import (
 	"strings"
 )
 
-var (
-	NoteDir   string
-	flNoteDir *string
-	flNotePat *string
-	err       error
-)
-
 func main() {
+	var NoteDir string
+	var err error
+
 	if len(os.Getenv("NOTEDIR")) > 0 {
 		NoteDir, err = filepath.Abs(os.Getenv("NOTEDIR"))
 		if err != nil {
@@ -27,11 +23,13 @@ func main() {
 	} else {
 		NoteDir = filepath.Join(os.Getenv("HOME"), "Notes")
 	}
-	flNoteDir = flag.String("d", NoteDir, "directory of notes")
-	flNotePat = flag.String("p", "Tasks*.md", "file pattern")
+
+	flNoteDir := flag.String("d", NoteDir, "directory of notes")
+	flNoteFilePat := flag.String("p", "Tasks*.md", "file pattern")
+	flNoteTodoPat := flag.String("s", "TODO", "search for pattern in files")
 	flag.Parse()
 
-	matches, err := filepath.Glob(filepath.Join(*flNoteDir, *flNotePat))
+	matches, err := filepath.Glob(filepath.Join(*flNoteDir, *flNoteFilePat))
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -55,10 +53,10 @@ func main() {
 				os.Exit(1)
 			}
 			count++
-			if strings.Contains(line, "TODO") {
+			if strings.Contains(line, *flNoteTodoPat) {
 				fmt.Printf("%s:%d\t%s\n", filepath.Base(match), count, strings.TrimRight(line, " \n"))
 				trimmed := strings.TrimSpace(line)
-				if strings.HasSuffix(trimmed, ":") || strings.HasSuffix(trimmed, "TODO") {
+				if strings.HasSuffix(trimmed, ":") || strings.HasSuffix(trimmed, *flNoteTodoPat) {
 					i := strings.IndexRune(line, rune(trimmed[0]))
 					for {
 						buf, err := rdr.Peek(i + 1)
