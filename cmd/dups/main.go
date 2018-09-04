@@ -17,8 +17,9 @@ import (
 
 var (
 	flLoadMap  = flag.String("l", "", "load existing map from file")
-	flSaveMap  = flag.String("s", "hash-map.json", "file to save map of file hashes to")
+	flSaveMap  = flag.String("o", "hash-map.json", "file to save map of file hashes to")
 	flHardlink = flag.Bool("H", false, "hardlink the duplicate files")
+	flSymlink  = flag.Bool("s", false, "symlink the duplicate files")
 	flQuiet    = flag.Bool("q", false, "less output")
 	nprocs     = 1
 )
@@ -93,11 +94,18 @@ func main() {
 						fmt.Printf("%q is the same content as %q\n", path, fpath)
 					}
 					if *flHardlink {
-						if err = SafeLink(fpath, path); err != nil {
+						if err = SafeLink(fpath, path, true); err != nil {
 							fmt.Fprintln(os.Stderr, err, path)
 							return
 						}
-						fmt.Printf("linked %q to %q\n", path, fpath)
+						fmt.Printf("hard linked %q to %q\n", path, fpath)
+					}
+					if *flSymlink {
+						if err = SafeLink(fpath, path, false); err != nil {
+							fmt.Fprintln(os.Stderr, err, path)
+							return
+						}
+						fmt.Printf("soft linked %q to %q\n", path, fpath)
 					}
 					savings += info.Size()
 				} else {
@@ -135,7 +143,7 @@ func main() {
 }
 
 // SafeLink overrides newname if it already exists. If there is an error in creating the link, the transaction is rolled back
-func SafeLink(oldname, newname string) error {
+func SafeLink(oldname, newname string, hard bool) error {
 	var backupName string
 	// check if newname exists
 	if fi, err := os.Stat(newname); err == nil && fi != nil {
@@ -150,16 +158,34 @@ func SafeLink(oldname, newname string) error {
 			return err
 		}
 	}
-	// hardlink oldname to newname
-	if err := os.Link(oldname, newname); err != nil {
-		// if that failed, and there is a backupName
-		if len(backupName) > 0 {
-			// then move back the backup
-			if err = os.Rename(backupName, newname); err != nil {
-				return err
+	if hard {
+		// hardlink oldname to newname
+		if err := os.Link(oldname, newname); err != nil {
+			// if that failed, and there is a backupName
+			if len(backupName) > 0 {
+				// then move back the backup
+				if err = os.Rename(backupName, newname); err != nil {
+					return err
+				}
 			}
+			return err
 		}
-		return err
+	} else {
+		// symlink
+		relpath, err := filepath.Rel(filepath.Dir(newname), oldname)
+		if err != nil {
+			return err
+		}
+		if err := os.Symlink(relpath, newname); err != nil {
+			// if that failed, and there is a backupName
+			if len(backupName) > 0 {
+				// then move back the backup
+				if err = os.Rename(backupName, newname); err != nil {
+					return err
+				}
+			}
+			return err
+		}
 	}
 	// remove the backupName
 	if len(backupName) > 0 {
