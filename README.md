@@ -1,4 +1,4 @@
-# freezing-octo-hipster
+# utils
 
 Random utilities of vbatts' being cleaned up, and published
 
@@ -11,7 +11,7 @@ deduplicate the tree using hardlinks.
 
 ### Install
 
-	go get github.com/vbatts/freezing-octo-hipster/cmd/dups
+	go get github.com/vbatts/utils/cmd/dups
 
 ### Usage
 
@@ -25,11 +25,11 @@ deduplicate the tree using hardlinks.
 By default it scans the paths provided, and creates a JSON document of the file paths and their checksum:
 
 	$ dups .
-	"/home/vbatts/src/vb/freezing-octo-hipster/.git/logs/refs/heads/master" is the same content as "/home/vbatts/src/vb/freezing-octo-hipster/.git/logs/HEAD"
-	"/home/vbatts/src/vb/freezing-octo-hipster/.git/refs/remotes/origin/master" is the same content as "/home/vbatts/src/vb/freezing-octo-hipster/.git/refs/heads/master"
-	"/home/vbatts/src/vb/freezing-octo-hipster/cmd/find-todos/main.go~" is the same content as "/home/vbatts/src/vb/freezing-octo-hipster/cmd/find-todos/main.go"
-	"/home/vbatts/src/vb/freezing-octo-hipster/cmd/slackware-sync/README.md~" is the same content as "/home/vbatts/src/vb/freezing-octo-hipster/cmd/slackware-sync/README.md"
-	"/home/vbatts/src/vb/freezing-octo-hipster/cmd/slackware-sync/main.go" is the same content as "/home/vbatts/src/vb/freezing-octo-hipster/cmd/slackware-sync/main.go~"
+	"/home/vbatts/src/vb/utils/.git/logs/refs/heads/master" is the same content as "/home/vbatts/src/vb/utils/.git/logs/HEAD"
+	"/home/vbatts/src/vb/utils/.git/refs/remotes/origin/master" is the same content as "/home/vbatts/src/vb/utils/.git/refs/heads/master"
+	"/home/vbatts/src/vb/utils/cmd/find-todos/main.go~" is the same content as "/home/vbatts/src/vb/utils/cmd/find-todos/main.go"
+	"/home/vbatts/src/vb/utils/cmd/slackware-sync/README.md~" is the same content as "/home/vbatts/src/vb/utils/cmd/slackware-sync/README.md"
+	"/home/vbatts/src/vb/utils/cmd/slackware-sync/main.go" is the same content as "/home/vbatts/src/vb/utils/cmd/slackware-sync/main.go~"
 	Savings of 0.005681mb
 	wrote "hash-map.json"
 
@@ -43,7 +43,7 @@ Simple date formating for notes
 
 ### Install
 
-	go get github.com/vbatts/freezing-octo-hipster/cmd/next-note
+	go get github.com/vbatts/utils/cmd/next-note
 
 ### Usage
 
@@ -71,5 +71,5 @@ Look through your notes directory for TODO items.
 
 ### Install
 
-	go get github.com/vbatts/freezing-octo-hipster/cmd/find-todos
+	go get github.com/vbatts/utils/cmd/find-todos
 

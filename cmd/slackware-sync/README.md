@@ -7,7 +7,7 @@ wrote the first version.
 
 Install this command
 
-	go get github.com/vbatts/freezing-octo-hipster/cmd/slackware-sync
+	go get github.com/vbatts/utils/cmd/slackware-sync
 
 Copy the `slackware-sync.toml` to `~/.slackware-sync.toml`, and edit as needed.
 
