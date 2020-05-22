@@ -1,6 +1,16 @@
 # see-pr
 
-Add the github PR refspec to a local git repo.
+I personally like fetching the pull-request's of a project.
+Makes it easier `tig pr/1234`, build it, etc.
+
+This tool simply adds the github PR refspec to a local git repo.
+
+```shell
+cd $YourClonedRepo
+see-pr
+git fetch
+git checkout pr/1234
+```
 
 ## Install
 
