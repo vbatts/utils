@@ -43,6 +43,9 @@ func main() {
 			if !info.Mode().IsRegular() {
 				return nil
 			}
+			if filepath.Ext(path) == ".gif" {
+				return nil
+			}
 			if *flMove {
 				if err := ps.Move(path, *flVerbose); err != nil {
 					log.Printf("WARN: %q failed with %s", path, err)
