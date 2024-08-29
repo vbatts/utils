@@ -12,6 +12,8 @@ import (
 	"github.com/rwcarlsen/goexif/mknote"
 )
 
+// TODO switch to https://github.com/dsoprea/go-exif
+
 var (
 	flPicturePath = flag.String("p", filepath.Join(os.Getenv("HOME"), "Pictures"), "Base path for pictures to be stored")
 	flPathFormat  = flag.String("f", "2006/01", "formatting for picture path")
@@ -74,6 +76,12 @@ func (ps PictureStore) Dest(path string) (string, error) {
 		return "", err
 	}
 	defer fh.Close()
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("WARN: panic recover in ps.Dest: %s", r)
+		}
+	}()
 
 	x, err := exif.Decode(fh)
 	if err != nil {
