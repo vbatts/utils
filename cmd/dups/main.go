@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -21,6 +20,7 @@ var (
 	flHardlink = flag.Bool("H", false, "hardlink the duplicate files")
 	flSymlink  = flag.Bool("s", false, "symlink the duplicate files")
 	flQuiet    = flag.Bool("q", false, "less output")
+	flVerbose  = flag.Bool("v", false, "more output")
 	nprocs     = 1
 )
 
@@ -31,25 +31,28 @@ func init() {
 
 func main() {
 	flag.Parse()
+
+	found := map[string]string{}
+	if len(*flLoadMap) > 0 {
+		fh, err := os.Open(*flLoadMap)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		buf, err := io.ReadAll(fh)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err = json.Unmarshal(buf, &found); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
+
 	for _, arg := range flag.Args() {
 		savings := int64(0)
-		found := map[string]string{}
-		if len(*flLoadMap) > 0 {
-			fh, err := os.Open(*flLoadMap)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
-			buf, err := ioutil.ReadAll(fh)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
-			if err = json.Unmarshal(buf, &found); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
-		}
+
 		workers := make(chan int, nprocs)
 		mu := sync.Mutex{}
 		err := filepath.Walk(arg, func(path string, info os.FileInfo, err error) error {
@@ -86,6 +89,9 @@ func main() {
 					return
 				}
 				path = p
+				if *flVerbose {
+					fmt.Printf("SHA1(%s)= %s\n", path, sum)
+				}
 
 				mu.Lock()
 				defer mu.Unlock()
