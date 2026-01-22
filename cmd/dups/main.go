@@ -74,7 +74,7 @@ func main() {
 		// Create table if it doesn't exist
 		sqlStmt := `CREATE TABLE IF NOT EXISTS file_hashes (
 			id INTEGER PRIMARY KEY,
-			hash TEXT NOT NULL UNIQUE,
+			hash TEXT NOT NULL,
 			file_path TEXT NOT NULL UNIQUE,
 			size INTEGER,
 			modified_time DATETIME,
@@ -117,7 +117,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		stmt, err := tx.Prepare("INSERT OR REPLACE INTO file_hashes (hash, file_path) VALUES (?, ?)")
+		stmt, err := tx.Prepare("INSERT OR IGNORE INTO file_hashes (hash, file_path) VALUES (?, ?)")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error preparing statement:", err)
 			os.Exit(1)
@@ -209,7 +209,7 @@ func main() {
 		// Create table if it doesn't exist
 		sqlStmt := `CREATE TABLE IF NOT EXISTS file_hashes (
 			id INTEGER PRIMARY KEY,
-			hash TEXT NOT NULL UNIQUE,
+			hash TEXT NOT NULL,
 			file_path TEXT NOT NULL UNIQUE,
 			size INTEGER,
 			modified_time DATETIME,
@@ -267,8 +267,8 @@ func main() {
 			go func() {
 				defer wgDB.Done()
 				for m := range measurements {
-					// Insert or update the record in the database
-					stmt, err := db.Prepare("INSERT OR REPLACE INTO file_hashes (hash, file_path, size, modified_time) VALUES (?, ?, ?, ?)")
+					// Insert the record in the database (ignore if file_path already exists)
+					stmt, err := db.Prepare("INSERT OR IGNORE INTO file_hashes (hash, file_path, size, modified_time) VALUES (?, ?, ?, ?)")
 					if err != nil {
 						fmt.Fprintln(os.Stderr, "Error preparing statement:", err)
 						continue
