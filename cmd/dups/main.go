@@ -75,12 +75,14 @@ func main() {
 		sqlStmt := `CREATE TABLE IF NOT EXISTS file_hashes (
 			id INTEGER PRIMARY KEY,
 			hash TEXT NOT NULL UNIQUE,
-			file_path TEXT NOT NULL,
+			file_path TEXT NOT NULL UNIQUE,
 			size INTEGER,
-			modified_time DATETIME DEFAULT CURRENT_TIMESTAMP
+			modified_time DATETIME,
+			checked_time DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE INDEX IF NOT EXISTS idx_hash ON file_hashes(hash);
-		CREATE INDEX IF NOT EXISTS idx_file_path ON file_hashes(file_path);`
+		CREATE INDEX IF NOT EXISTS idx_file_path ON file_hashes(file_path);
+		CREATE INDEX IF NOT EXISTS idx_checked_time ON file_hashes(checked_time);`
 
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
@@ -208,12 +210,14 @@ func main() {
 		sqlStmt := `CREATE TABLE IF NOT EXISTS file_hashes (
 			id INTEGER PRIMARY KEY,
 			hash TEXT NOT NULL UNIQUE,
-			file_path TEXT NOT NULL,
+			file_path TEXT NOT NULL UNIQUE,
 			size INTEGER,
-			modified_time DATETIME DEFAULT CURRENT_TIMESTAMP
+			modified_time DATETIME,
+			checked_time DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE INDEX IF NOT EXISTS idx_hash ON file_hashes(hash);
-		CREATE INDEX IF NOT EXISTS idx_file_path ON file_hashes(file_path);`
+		CREATE INDEX IF NOT EXISTS idx_file_path ON file_hashes(file_path);
+		CREATE INDEX IF NOT EXISTS idx_checked_time ON file_hashes(checked_time);`
 
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
@@ -264,12 +268,20 @@ func main() {
 				defer wgDB.Done()
 				for m := range measurements {
 					// Insert or update the record in the database
-					stmt, err := db.Prepare("INSERT OR REPLACE INTO file_hashes (hash, file_path, size) VALUES (?, ?, ?)")
+					stmt, err := db.Prepare("INSERT OR REPLACE INTO file_hashes (hash, file_path, size, modified_time) VALUES (?, ?, ?, ?)")
 					if err != nil {
 						fmt.Fprintln(os.Stderr, "Error preparing statement:", err)
 						continue
 					}
-					_, err = stmt.Exec(m.hash, m.path, m.size)
+					// Get file modification time
+					info, err := os.Stat(m.path)
+					var modTime string
+					if err != nil {
+						modTime = ""
+					} else {
+						modTime = info.ModTime().Format("2006-01-02 15:04:05")
+					}
+					_, err = stmt.Exec(m.hash, m.path, m.size, modTime)
 					if err != nil {
 						fmt.Fprintln(os.Stderr, "Error inserting record:", err)
 					}
@@ -296,6 +308,68 @@ func main() {
 				defer wgWorkers.Done()
 				defer func() { <-workers }()
 
+				// Get the absolute filename
+				absPath, err := filepath.Abs(path)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err, path)
+					return
+				}
+
+				// Check if this file path already exists in the database
+				var existingHash string
+				var existingSize int64
+				if db != nil {
+					row := db.QueryRow("SELECT hash, size FROM file_hashes WHERE file_path = ?", absPath)
+					err = row.Scan(&existingHash, &existingSize)
+					if err == nil {
+						// File exists in database, check if size has changed
+						if existingSize == info.Size() {
+							// File size hasn't changed, assume content is the same (skip checksum)
+							if *flVerbose {
+								fmt.Printf("SKIPPED checksum for %s (already in DB, size unchanged: %d bytes)\n", absPath, existingSize)
+							}
+
+							mu.Lock()
+							defer mu.Unlock()
+							if fpath, ok := found[existingHash]; ok && fpath != absPath {
+								if !(*flQuiet) {
+									fmt.Printf("%q is the same content as %q\n", absPath, fpath)
+								}
+								if *flHardlink {
+									if err = SafeLink(fpath, absPath, true); err != nil {
+										fmt.Fprintln(os.Stderr, err, absPath)
+										return
+									}
+									fmt.Printf("hard linked %q to %q\n", absPath, fpath)
+								}
+								if *flSymlink {
+									if err = SafeLink(fpath, absPath, false); err != nil {
+										fmt.Fprintln(os.Stderr, err, absPath)
+										return
+									}
+									fmt.Printf("soft linked %q to %q\n", absPath, fpath)
+								}
+								savings += info.Size()
+							} else {
+								found[existingHash] = absPath
+							}
+
+							// Update the checked_time in the database
+							_, err = db.Exec("UPDATE file_hashes SET checked_time = CURRENT_TIMESTAMP WHERE file_path = ?", absPath)
+							if err != nil && *flVerbose {
+								fmt.Fprintf(os.Stderr, "Warning: could not update checked_time for %s: %v\n", absPath, err)
+							}
+							return
+						} else {
+							if *flVerbose {
+								fmt.Printf("File size changed: %s (%d -> %d bytes)\n",
+									absPath, existingSize, info.Size())
+							}
+						}
+					}
+				}
+
+				// Calculate hash for new or changed file
 				fh, err := os.Open(path)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err, path)
@@ -310,47 +384,40 @@ func main() {
 				}
 				sum := fmt.Sprintf("%x", h.Sum(nil))
 
-				// get the absolute filename
-				p, err := filepath.Abs(path)
-				if err != nil {
-					fmt.Fprintln(os.Stderr, err, path)
-					return
-				}
-				path = p
 				if *flVerbose {
-					fmt.Printf("SHA1(%s)= %s\n", path, sum)
+					fmt.Printf("SHA1(%s)= %s\n", absPath, sum)
 				}
 
 				mu.Lock()
 				defer mu.Unlock()
-				if fpath, ok := found[sum]; ok && fpath != path {
+				if fpath, ok := found[sum]; ok && fpath != absPath {
 					if !(*flQuiet) {
-						fmt.Printf("%q is the same content as %q\n", path, fpath)
+						fmt.Printf("%q is the same content as %q\n", absPath, fpath)
 					}
 					if *flHardlink {
-						if err = SafeLink(fpath, path, true); err != nil {
-							fmt.Fprintln(os.Stderr, err, path)
+						if err = SafeLink(fpath, absPath, true); err != nil {
+							fmt.Fprintln(os.Stderr, err, absPath)
 							return
 						}
-						fmt.Printf("hard linked %q to %q\n", path, fpath)
+						fmt.Printf("hard linked %q to %q\n", absPath, fpath)
 					}
 					if *flSymlink {
-						if err = SafeLink(fpath, path, false); err != nil {
-							fmt.Fprintln(os.Stderr, err, path)
+						if err = SafeLink(fpath, absPath, false); err != nil {
+							fmt.Fprintln(os.Stderr, err, absPath)
 							return
 						}
-						fmt.Printf("soft linked %q to %q\n", path, fpath)
+						fmt.Printf("soft linked %q to %q\n", absPath, fpath)
 					}
 					savings += info.Size()
 				} else {
-					found[sum] = path
+					found[sum] = absPath
 				}
 
 				// Send measurement to database if DB is provided
 				if db != nil {
 					measurements <- measurement{
 						hash: sum,
-						path: path,
+						path: absPath,
 						size: info.Size(),
 					}
 				}
