@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -76,12 +77,14 @@ func main() {
 			id INTEGER PRIMARY KEY,
 			hash TEXT NOT NULL,
 			file_path TEXT NOT NULL UNIQUE,
+			device_id TEXT,  -- Store device ID as string (major:minor)
 			size INTEGER,
 			modified_time DATETIME,
 			checked_time DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE INDEX IF NOT EXISTS idx_hash ON file_hashes(hash);
 		CREATE INDEX IF NOT EXISTS idx_file_path ON file_hashes(file_path);
+		CREATE INDEX IF NOT EXISTS idx_device_id ON file_hashes(device_id);
 		CREATE INDEX IF NOT EXISTS idx_checked_time ON file_hashes(checked_time);`
 
 		_, err = db.Exec(sqlStmt)
@@ -117,7 +120,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		stmt, err := tx.Prepare("INSERT OR IGNORE INTO file_hashes (hash, file_path) VALUES (?, ?)")
+		stmt, err := tx.Prepare("INSERT OR IGNORE INTO file_hashes (hash, file_path, device_id) VALUES (?, ?, ?)")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error preparing statement:", err)
 			os.Exit(1)
@@ -126,7 +129,23 @@ func main() {
 
 		count := 0
 		for hash, path := range importedMap {
-			_, err = stmt.Exec(hash, path)
+			// Get device ID for the file
+			var deviceId string
+			stat, err := os.Stat(path)
+			if err != nil {
+				// If file doesn't exist, skip device ID
+				deviceId = ""
+			} else {
+				sysStat, ok := stat.Sys().(*syscall.Stat_t)
+				if ok {
+					// Use major device number only (not inode number)
+					majorDev := (sysStat.Dev >> 8) & 0xff | ((sysStat.Dev >> 32) & 0xfff00) // Extract major device number
+					deviceId = fmt.Sprintf("%d", majorDev)
+				} else {
+					deviceId = ""
+				}
+			}
+			_, err = stmt.Exec(hash, path, deviceId)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Error inserting record:", err)
 				continue
@@ -211,12 +230,14 @@ func main() {
 			id INTEGER PRIMARY KEY,
 			hash TEXT NOT NULL,
 			file_path TEXT NOT NULL UNIQUE,
+			device_id TEXT,  -- Store device ID as string (major:minor)
 			size INTEGER,
 			modified_time DATETIME,
 			checked_time DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE INDEX IF NOT EXISTS idx_hash ON file_hashes(hash);
 		CREATE INDEX IF NOT EXISTS idx_file_path ON file_hashes(file_path);
+		CREATE INDEX IF NOT EXISTS idx_device_id ON file_hashes(device_id);
 		CREATE INDEX IF NOT EXISTS idx_checked_time ON file_hashes(checked_time);`
 
 		_, err = db.Exec(sqlStmt)
@@ -268,20 +289,30 @@ func main() {
 				defer wgDB.Done()
 				for m := range measurements {
 					// Insert the record in the database (ignore if file_path already exists)
-					stmt, err := db.Prepare("INSERT OR IGNORE INTO file_hashes (hash, file_path, size, modified_time) VALUES (?, ?, ?, ?)")
+					stmt, err := db.Prepare("INSERT OR IGNORE INTO file_hashes (hash, file_path, device_id, size, modified_time) VALUES (?, ?, ?, ?, ?)")
 					if err != nil {
 						fmt.Fprintln(os.Stderr, "Error preparing statement:", err)
 						continue
 					}
-					// Get file modification time
+					// Get file modification time and device ID
 					info, err := os.Stat(m.path)
 					var modTime string
+					var deviceId string
 					if err != nil {
 						modTime = ""
+						deviceId = ""
 					} else {
 						modTime = info.ModTime().Format("2006-01-02 15:04:05")
+						sysStat, ok := info.Sys().(*syscall.Stat_t)
+						if ok {
+							// Use major device number only (not inode number)
+							majorDev := (sysStat.Dev >> 8) & 0xff | ((sysStat.Dev >> 32) & 0xfff00) // Extract major device number
+							deviceId = fmt.Sprintf("%d", majorDev)
+						} else {
+							deviceId = ""
+						}
 					}
-					_, err = stmt.Exec(m.hash, m.path, m.size, modTime)
+					_, err = stmt.Exec(m.hash, m.path, deviceId, m.size, modTime)
 					if err != nil {
 						fmt.Fprintln(os.Stderr, "Error inserting record:", err)
 					}
@@ -318,9 +349,10 @@ func main() {
 				// Check if this file path already exists in the database
 				var existingHash string
 				var existingSize int64
+				var existingDeviceId string
 				if db != nil {
-					row := db.QueryRow("SELECT hash, size FROM file_hashes WHERE file_path = ?", absPath)
-					err = row.Scan(&existingHash, &existingSize)
+					row := db.QueryRow("SELECT hash, size, device_id FROM file_hashes WHERE file_path = ?", absPath)
+					err = row.Scan(&existingHash, &existingSize, &existingDeviceId)
 					if err == nil {
 						// File exists in database, check if size has changed
 						if existingSize == info.Size() {
@@ -329,18 +361,60 @@ func main() {
 								fmt.Printf("SKIPPED checksum for %s (already in DB, size unchanged: %d bytes)\n", absPath, existingSize)
 							}
 
+							// Get current device ID
+							sysStat, ok := info.Sys().(*syscall.Stat_t)
+							if !ok {
+								// If we can't get device info, skip hardlinking
+								if *flVerbose {
+									fmt.Printf("Skipped hardlink: could not get device info for %s\n", absPath)
+								}
+							}
+							var currentMajorDev uint64
+							if ok {
+								// Extract major device number
+								currentMajorDev = (sysStat.Dev >> 8) & 0xff | ((sysStat.Dev >> 32) & 0xfff00)
+							}
+
 							mu.Lock()
 							defer mu.Unlock()
 							if fpath, ok := found[existingHash]; ok && fpath != absPath {
 								if !(*flQuiet) {
 									fmt.Printf("%q is the same content as %q\n", absPath, fpath)
 								}
-								if *flHardlink {
-									if err = SafeLink(fpath, absPath, true); err != nil {
-										fmt.Fprintln(os.Stderr, err, absPath)
-										return
+								if *flHardlink && ok { // Only proceed if we have sysStat
+									// Check if both files are on the same device before hardlinking
+									var targetSysStat syscall.Stat_t
+									targetInfo, err := os.Stat(fpath)
+									if err == nil && targetInfo != nil {
+										if targetSys, ok := targetInfo.Sys().(*syscall.Stat_t); ok {
+											targetSysStat = *targetSys
+											// Extract major device numbers
+											targetMajorDev := (targetSysStat.Dev >> 8) & 0xff | ((targetSysStat.Dev >> 32) & 0xfff00)
+											// Only hardlink if both files are on the same device
+											if currentMajorDev == targetMajorDev {
+												if err = SafeLink(fpath, absPath, true); err != nil {
+													fmt.Fprintln(os.Stderr, err, absPath)
+													return
+												}
+												fmt.Printf("hard linked %q to %q\n", absPath, fpath)
+											} else {
+												if *flVerbose {
+													fmt.Printf("Skipped hardlink: files on different devices (%d vs %d)\n",
+														int(currentMajorDev), int(targetMajorDev))
+												}
+											}
+										}
+									} else {
+										// If we can't get target stats, skip hardlinking
+										if *flVerbose {
+											fmt.Printf("Skipped hardlink: could not stat target file %s\n", fpath)
+										}
 									}
-									fmt.Printf("hard linked %q to %q\n", absPath, fpath)
+								} else if *flHardlink && !ok {
+									// If we couldn't get device info, skip hardlinking
+									if *flVerbose {
+										fmt.Printf("Skipped hardlink: could not get device info for %s\n", absPath)
+									}
 								}
 								if *flSymlink {
 									if err = SafeLink(fpath, absPath, false); err != nil {
@@ -395,11 +469,48 @@ func main() {
 						fmt.Printf("%q is the same content as %q\n", absPath, fpath)
 					}
 					if *flHardlink {
-						if err = SafeLink(fpath, absPath, true); err != nil {
-							fmt.Fprintln(os.Stderr, err, absPath)
-							return
+						// Check if both files are on the same device before hardlinking
+						var targetSysStat syscall.Stat_t
+						targetInfo, err := os.Stat(fpath)
+						if err == nil && targetInfo != nil {
+							if targetSys, ok := targetInfo.Sys().(*syscall.Stat_t); ok {
+								targetSysStat = *targetSys
+								sysStat, ok := info.Sys().(*syscall.Stat_t)
+								if ok {
+									// Extract major device numbers
+									currentMajorDev := (sysStat.Dev >> 8) & 0xff | ((sysStat.Dev >> 32) & 0xfff00)
+									targetMajorDev := (targetSysStat.Dev >> 8) & 0xff | ((targetSysStat.Dev >> 32) & 0xfff00)
+									// Only hardlink if both files are on the same device
+									if currentMajorDev == targetMajorDev {
+										if err = SafeLink(fpath, absPath, true); err != nil {
+											fmt.Fprintln(os.Stderr, err, absPath)
+											return
+										}
+										fmt.Printf("hard linked %q to %q\n", absPath, fpath)
+									} else {
+										if *flVerbose {
+											fmt.Printf("Skipped hardlink: files on different devices (%d vs %d)\n",
+												int(currentMajorDev), int(targetMajorDev))
+										}
+									}
+								} else {
+									// If we can't get current file stats, skip hardlinking
+									if *flVerbose {
+										fmt.Printf("Skipped hardlink: could not get device info for %s\n", absPath)
+									}
+								}
+							} else {
+								// If we can't get target stats, skip hardlinking
+								if *flVerbose {
+									fmt.Printf("Skipped hardlink: could not get device info for target file %s\n", fpath)
+								}
+							}
+						} else {
+							// If we can't stat target file, skip hardlinking
+							if *flVerbose {
+								fmt.Printf("Skipped hardlink: could not stat target file %s\n", fpath)
+							}
 						}
-						fmt.Printf("hard linked %q to %q\n", absPath, fpath)
 					}
 					if *flSymlink {
 						if err = SafeLink(fpath, absPath, false); err != nil {
