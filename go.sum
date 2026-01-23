@@ -23,7 +23,9 @@ github.com/luksen/maildir v0.0.0-20210101204218-7ed7afdce6bf h1:ThDitDpoyi2QxOgR
 github.com/luksen/maildir v0.0.0-20210101204218-7ed7afdce6bf/go.mod h1:G5H0u6NGJhyvKAmheKsXTuadnQbUZIIpCvOpWDYJIKk=
 github.com/mattn/go-gtk v0.0.0-20240119050609-48574e312fac h1:tNm7zRceQAOg9D8vQFq0K9hy49j39+9+7rSjML4YREI=
 github.com/mattn/go-gtk v0.0.0-20240119050609-48574e312fac/go.mod h1:PwzwfeB5syFHXORC3MtPylVcjIoTDT/9cvkKpEndGVI=
-github.com/mqu/go-notify v0.0.0-20130719194048-ef6f6f49d093 h1:OvySnanP8CQIKS+MTq9AXBwEXzm0YaKeu331bWql3ug=
+github.com/mmcloughlin/avo v0.5.0/go.mod h1:ChHFdoV7ql95Wi7vuq2YT1bwCJqiWdZrQ1im3VujLYM=
+github.com/mattn/go-sqlite3 v1.14.33 h1:A5blZ5ulQo2AtayQ9/limgHEkFreKj1Dv226a1K73s0=
+github.com/mattn/go-sqlite3 v1.14.33/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
 github.com/mqu/go-notify v0.0.0-20130719194048-ef6f6f49d093/go.mod h1:AthsKyBZ9hqwU7DBWFiOxYObyF8nVyYVubXv/pQNC5E=
 github.com/onsi/gomega v1.34.1 h1:EUMJIKUjM8sKjYbtxQI9A4z2o+rruxnzNvpknOXie6k=
 github.com/onsi/gomega v1.34.1/go.mod h1:kU1QgUvBDLXBJq618Xvm2LUX6rSAfRaFRTcdOeDLwwY=
