@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"sync"
 
@@ -25,11 +26,46 @@ var (
 	flExport   = flag.String("export-json", "", "export hash map from database to JSON file (requires -db)")
 	flWorkers  = flag.Int("w", runtime.NumCPU(), "number of workers for measurements")
 	flHardlink = flag.Bool("H", false, "hardlink the duplicate files")
+	flHardlinkPaths = flag.String("H-paths", "", "comma-separated list of allowed paths for hardlinking (if specified, only hardlink within these paths)")
 	flSymlink  = flag.Bool("s", false, "symlink the duplicate files")
 	flQuiet    = flag.Bool("q", false, "less output")
 	flVerbose  = flag.Bool("v", false, "more output")
 	nprocs     = 1
 )
+
+// isPathAllowed checks if a path is within any of the allowed paths
+func isPathAllowed(path string, allowedPaths []string) bool {
+	if len(allowedPaths) == 0 {
+		// If no allowed paths specified, all paths are allowed
+		return true
+	}
+
+	// Clean the path for comparison
+	cleanPath := filepath.Clean(path)
+
+	for _, allowedPath := range allowedPaths {
+		// Convert allowed path to absolute path if it's not already
+		absAllowedPath := allowedPath
+		if !filepath.IsAbs(allowedPath) {
+			var err error
+			absAllowedPath, err = filepath.Abs(allowedPath)
+			if err != nil {
+				continue
+			}
+		}
+
+		// Check if the path is within the allowed path
+		rel, err := filepath.Rel(absAllowedPath, cleanPath)
+		if err != nil {
+			continue
+		}
+		// If the relative path doesn't start with "..", it's within the allowed path
+		if !strings.HasPrefix(rel, "..") {
+			return true
+		}
+	}
+	return false
+}
 
 func init() {
 	nprocs = runtime.NumCPU()
@@ -38,6 +74,26 @@ func init() {
 
 func main() {
 	flag.Parse()
+
+	// Parse allowed hardlink paths if specified
+	var allowedHardlinkPaths []string
+	if *flHardlinkPaths != "" {
+		paths := strings.Split(*flHardlinkPaths, ",")
+		// Clean up and convert paths to absolute
+		for _, path := range paths {
+			cleanPath := filepath.Clean(strings.TrimSpace(path))
+			if !filepath.IsAbs(cleanPath) {
+				absPath, err := filepath.Abs(cleanPath)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error converting path to absolute: %s, %v\n", cleanPath, err)
+					continue
+				}
+				allowedHardlinkPaths = append(allowedHardlinkPaths, absPath)
+			} else {
+				allowedHardlinkPaths = append(allowedHardlinkPaths, cleanPath)
+			}
+		}
+	}
 
 	found := map[string]string{}
 	if len(*flLoadMap) > 0 {
@@ -392,11 +448,19 @@ func main() {
 											targetMajorDev := (targetSysStat.Dev >> 8) & 0xff | ((targetSysStat.Dev >> 32) & 0xfff00)
 											// Only hardlink if both files are on the same device
 											if currentMajorDev == targetMajorDev {
-												if err = SafeLink(fpath, absPath, true); err != nil {
-													fmt.Fprintln(os.Stderr, err, absPath)
-													return
+												// Check if both files are within allowed paths (if specified)
+												if isPathAllowed(absPath, allowedHardlinkPaths) && isPathAllowed(fpath, allowedHardlinkPaths) {
+													if err = SafeLink(fpath, absPath, true); err != nil {
+														fmt.Fprintln(os.Stderr, err, absPath)
+														return
+													}
+													fmt.Printf("hard linked %q to %q\n", absPath, fpath)
+												} else {
+													if *flVerbose {
+														fmt.Printf("Skipped hardlink: file(s) not in allowed paths (current: %s, target: %s)\n",
+															absPath, fpath)
+													}
 												}
-												fmt.Printf("hard linked %q to %q\n", absPath, fpath)
 											} else {
 												if *flVerbose {
 													fmt.Printf("Skipped hardlink: files on different devices (%d vs %d)\n",
@@ -482,11 +546,19 @@ func main() {
 									targetMajorDev := (targetSysStat.Dev >> 8) & 0xff | ((targetSysStat.Dev >> 32) & 0xfff00)
 									// Only hardlink if both files are on the same device
 									if currentMajorDev == targetMajorDev {
-										if err = SafeLink(fpath, absPath, true); err != nil {
-											fmt.Fprintln(os.Stderr, err, absPath)
-											return
+										// Check if both files are within allowed paths (if specified)
+										if isPathAllowed(absPath, allowedHardlinkPaths) && isPathAllowed(fpath, allowedHardlinkPaths) {
+											if err = SafeLink(fpath, absPath, true); err != nil {
+												fmt.Fprintln(os.Stderr, err, absPath)
+												return
+											}
+											fmt.Printf("hard linked %q to %q\n", absPath, fpath)
+										} else {
+											if *flVerbose {
+												fmt.Printf("Skipped hardlink: file(s) not in allowed paths (current: %s, target: %s)\n",
+													absPath, fpath)
+											}
 										}
-										fmt.Printf("hard linked %q to %q\n", absPath, fpath)
 									} else {
 										if *flVerbose {
 											fmt.Printf("Skipped hardlink: files on different devices (%d vs %d)\n",
